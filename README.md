@@ -25,7 +25,7 @@ This repository hosts the source code for TOMATO, a dynamic food ordering websit
 - Authenticated APIs
 - REST APIs
 - Role-Based Identification
-- Beautiful Alerts
+- Alerts
 
 ## Screenshots
 
