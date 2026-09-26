@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  mongodb:
+    image: mongo
+    container_name: mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - app-network
+    healthcheck:
+     test: ["CMD", "curl", "-f", "http://localhost:4000"]
+     interval: 10s
+     timeout: 5s
+     retries: 3
+
+  backend:
+    image: keeko/food-delivery-backend:latest
+    container_name: backend-container
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    ports:
+      - "4000:4000"
+    depends_on:
+      - mongodb
+    networks:
+      - app-network
+    healthcheck:
+     test: ["CMD", "curl", "-f", "http://localhost:4000"]
+     interval: 10s
+     timeout: 5s
+     retries: 3
+
+  frontend:
+    image: keeko/food-delivery-frontend:latest
+    container_name: frontend-container
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+volumes:
+  mongo-data:
+
+networks:
+  app-network:
+    driver: bridge

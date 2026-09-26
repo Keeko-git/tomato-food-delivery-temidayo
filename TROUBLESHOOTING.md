@@ -328,3 +328,43 @@ Verified via a full pull-and-run test: local images were deleted (docker rmi), t
 ✅ curl http://localhost:4000 returns API Working
 
 *Next steps:* Git workflow (commit, push, PR to dev), then LinkedIn post summarizing key learnings.
+Task 6: Docker Compose Orchestration
+
+Migrated from manually running individual docker run commands to a single docker-compose.yml orchestrating all three services (mongodb, backend, frontend) together.
+
+What was configured:
+
+All three services defined under one Compose file, reusing the existing named volume (mongo-data) and network (app-network) so prior data and networking behavior carried over unchanged
+restart: unless-stopped added to all services — directly resolves the recurring "MongoDB container not running" issue (Issue 9) from earlier tasks, since containers now automatically come back up after a crash or reboot
+depends_on used to sequence startup order (mongodb → backend → frontend)
+Health checks added for backend and mongodb, verified via:
+bash
+  docker compose ps
+  docker inspect --format='{{json .State.Health}}' backend-container
+
+Confirmed (healthy) status appearing after containers stabilized.
+
+Restart-policy behavior confirmed: after a Docker Desktop restart, docker compose ps showed all containers automatically back to Up/(healthy) without manual intervention.
+docker compose down confirmed to stop and remove containers/network while preserving the named volume, per the checklist's requirement not to lose persisted data on cleanup.
+
+Known limitation identified: the backend healthcheck (curl -f http://localhost:4000) only confirms the Node/Express process is responding — it does not verify the MongoDB connection is actually healthy. A backend that's up but silently disconnected from the database would still report (healthy). A more complete check would add a dedicated /health route in server.js that verifies mongoose.connection.readyState and returns a non-200 status if the DB connection is down, so Docker's healthcheck reflects true application health rather than just process liveness. Not implemented in this pass, but noted as a follow-up improvement.
+
+Key Learnings
+Container hostname resolution: Containers on the same Docker network resolve each other by container name, not localhost. The backend must reference mongodb://mongodb:27017/..., not mongodb://localhost:27017/....
+Env var naming must match exactly between .env and the code reading it (process.env.X) — a single-character mismatch (URI vs URL) caused a full outage that looked like a missing database.
+Always check docker ps -a, not just docker ps, when a container isn't responding — a container that exited won't show in the default docker ps list.
+docker logs <container> is the fastest diagnostic step for any container that starts and then becomes unreachable.
+Secrets (.env) must be excluded from the image via .dockerignore and injected at runtime with --env-file, never baked into the image with COPY.
+Frontend env vars (Vite) behave differently from backend env vars (Node/Express). Node reads process.env at runtime, so --env-file on docker run works fine. Vite bakes import.meta.env.* values into the static bundle at build time, so those variables must be passed via --build-arg during docker build, not docker run.
+Hardcoded URLs are a silent failure mode. The frontend loaded perfectly and looked fully functional while quietly talking to a production backend instead of the local one — visual success does not equal correct wiring. Always verify actual network requests via DevTools, not just that a page renders.
+Docker named volumes persist independently of the container. Deleting and recreating a container with the same -v volume:/path mount retains all prior data — this is the mechanism that makes databases in containers safe to restart/recreate.
+MongoDB database names are case-sensitive — a typo in case (Food-Delivery vs food-delivery) silently connects to a different, empty database rather than throwing an error.
+npm install --omit=dev <package> does not reliably override an existing devDependencies entry. If a package the runtime needs (like vite, for vite preview) is only declared under devDependencies, explicitly naming it alongside --omit=dev can silently fail to install it. Installing it as a separate step with --no-save avoids the conflict.
+Docker layer caching can mask a fix. If an earlier, broken instruction shares identical command text with a later, corrected one, Docker may reuse the cached (broken) result instead of re-running it — even though the file/position changed elsewhere. docker build --no-cache is the reliable way to rule this out when a fix "should" have worked but didn't.
+Registry image paths must be lowercase, even if the account username itself has capital letters (applies to GHCR specifically).
+Long-running containers without --restart policies stop and stay stopped across sessions/reboots — easy to forget a dependency container (like mongodb) isn't running when debugging an unrelated-looking crash in another container.
+Current Status
+
+✅ Backend container builds and runs successfully (multi-stage, non-root user) ✅ Frontend container builds and runs successfully (multi-stage, non-root user) ✅ MongoDB container running with persistent volume ✅ Backend successfully connects to MongoDB over app-network ✅ Frontend correctly configured to call local backend via VITE_API_URL build arg ✅ Full-stack flow verified: Frontend → Backend → Database → Volume persistence ✅ Images pushed to Docker Hub and GHCR; verified via pull-and-run test ✅ curl http://localhost:4000 returns API Working ✅ Full stack orchestrated via docker-compose.yml — single docker compose up -d replaces manual multi-command startup ✅ Health checks configured and verified for backend/mongodb; restart policies confirmed to survive Docker Desktop restart ✅ docker compose down confirmed to preserve the named volume (data persists across cleanup)
+
+Next steps: Git workflow (commit, push, PR to dev), then LinkedIn post summarizing key learnings.
