@@ -14,7 +14,7 @@ pipeline {
 
     environment {
         // ---- EDIT THESE ----
-        AWS_ACCOUNT_ID = 'YOUR_AWS_ACCOUNT_ID'
+        AWS_ACCOUNT_ID = '414964671989'
         AWS_REGION     = 'us-east-1'
         // Vite bakes this into the frontend bundle at build time
         VITE_API_URL   = 'http://localhost:4000'
