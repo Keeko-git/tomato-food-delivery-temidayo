@@ -17,7 +17,7 @@ pipeline {
         AWS_ACCOUNT_ID = '414964671989'
         AWS_REGION     = 'us-east-1'
         // Vite bakes this into the frontend bundle at build time
-        VITE_API_URL   = 'http://localhost:4000'
+        VITE_API_URL   = 'http://3.81.165.236:4000'
         // --------------------
 
         BACKEND_IMAGE  = 'food-delivery-backend'
