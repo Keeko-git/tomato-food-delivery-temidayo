@@ -7,23 +7,21 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
-    // Fires when the GitHub webhook (Step 7) hits http://<jenkins-ip>:8080/github-webhook/
+    // Fires when the GitHub webhook hits http://3.81.165.236:8080/github-webhook/
     triggers {
         githubPush()
     }
 
     environment {
-        // ---- EDIT THESE ----
-        AWS_ACCOUNT_ID = '414964671989'
-        AWS_REGION     = 'us-east-1'
-        // Vite bakes this into the frontend bundle at build time
+        // ---- EDIT THIS ----
+        // Vite bakes this into the frontend bundle at build time.
+        // Use the public address the BROWSER will use to reach the backend.
         VITE_API_URL   = 'http://3.81.165.236:4000'
-        // --------------------
+        // -------------------
 
         BACKEND_IMAGE  = 'food-delivery-backend'
         FRONTEND_IMAGE = 'food-delivery-frontend'
         IMAGE_TAG      = "${env.BUILD_NUMBER}"
-        ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
     }
 
     stages {
@@ -82,28 +80,28 @@ pipeline {
             }
         }
 
-        stage('Push to AWS ECR') {
+        stage('Push to GHCR') {
             steps {
-                // If the EC2 instance has an IAM role with ECR permissions,
-                // delete this withCredentials wrapper and keep only the sh block.
+                // Reuses the github-creds credential. Its token needs the
+                // write:packages and read:packages scopes (not just repo).
                 withCredentials([usernamePassword(
-                    credentialsId: 'aws-creds',
-                    usernameVariable: 'AWS_ACCESS_KEY_ID',
-                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                    credentialsId: 'github-creds',
+                    usernameVariable: 'GH_USER',
+                    passwordVariable: 'GH_TOKEN'
                 )]) {
                     sh '''
-                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+                        # GHCR image paths must be lowercase
+                        GH_OWNER=$(echo "$GH_USER" | tr '[:upper:]' '[:lower:]')
+                        echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_USER" --password-stdin
                         for IMG in $BACKEND_IMAGE $FRONTEND_IMAGE; do
-                            aws ecr describe-repositories --repository-names $IMG --region $AWS_REGION > /dev/null 2>&1 \
-                                || aws ecr create-repository --repository-name $IMG --region $AWS_REGION
-                            docker tag $IMG:$IMAGE_TAG $ECR_REGISTRY/$IMG:$IMAGE_TAG
-                            docker tag $IMG:$IMAGE_TAG $ECR_REGISTRY/$IMG:latest
-                            docker push $ECR_REGISTRY/$IMG:$IMAGE_TAG
-                            docker push $ECR_REGISTRY/$IMG:latest
-                            aws ecr describe-images --repository-name $IMG --image-ids imageTag=$IMAGE_TAG --region $AWS_REGION > /dev/null
-                            echo "Verified on ECR: $ECR_REGISTRY/$IMG:$IMAGE_TAG"
+                            docker tag $IMG:$IMAGE_TAG ghcr.io/$GH_OWNER/$IMG:$IMAGE_TAG
+                            docker tag $IMG:$IMAGE_TAG ghcr.io/$GH_OWNER/$IMG:latest
+                            docker push ghcr.io/$GH_OWNER/$IMG:$IMAGE_TAG
+                            docker push ghcr.io/$GH_OWNER/$IMG:latest
+                            docker manifest inspect ghcr.io/$GH_OWNER/$IMG:$IMAGE_TAG > /dev/null
+                            echo "Verified on GHCR: ghcr.io/$GH_OWNER/$IMG:$IMAGE_TAG"
                         done
-                        docker logout $ECR_REGISTRY
+                        docker logout ghcr.io
                     '''
                 }
             }
@@ -116,7 +114,7 @@ pipeline {
             sh 'docker image prune -f || true'
         }
         success {
-            echo "Pipeline succeeded: images tagged ${IMAGE_TAG} and latest are on Docker Hub and ECR."
+            echo "Pipeline succeeded: images tagged ${IMAGE_TAG} and latest are on Docker Hub and GHCR."
         }
         failure {
             echo 'Pipeline failed. Check the stage that turned red in the console output.'
